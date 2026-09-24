@@ -5,13 +5,12 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Moon, RotateCcw, Sun 
 import Button from "@/shared/ui/button";
 import Card from "@/shared/ui/card";
 import { basisIds, cards, coreIds, phases } from "./cards";
-import { currentId, decodeState, encodeState, goBack, initialState, takeChoice, toggleCheck, type WorkflowState } from "./state";
+import { currentId, goBack, initialState, readStateFromSearch, takeChoice, toggleCheck, writeStateToSearch, type WorkflowState } from "./state";
 
-function readUrl(): WorkflowState { return decodeState(new URLSearchParams(window.location.search).get("s")); }
+function readUrl(): WorkflowState { return readStateFromSearch(new URLSearchParams(window.location.search)); }
 function saveUrl(state: WorkflowState, push = true) {
   const url = new URL(window.location.href);
-  if (state.trail.length === 1 && !Object.keys(state.checks).length) url.searchParams.delete("s");
-  else url.searchParams.set("s", encodeState(state));
+  url.search = writeStateToSearch(url.searchParams, state).toString();
   window.history[push ? "pushState" : "replaceState"](null, "", url);
 }
 
@@ -24,7 +23,12 @@ export default function WorkflowApp() {
   useEffect(() => {
     const selected = localStorage.getItem("workflow-theme") === "dark" ? "dark" : "light";
     document.documentElement.classList.toggle("dark", selected === "dark");
-    queueMicrotask(() => { setState(readUrl()); setTheme(selected); setReady(true); });
+    queueMicrotask(() => {
+      const restored = readUrl();
+      setState(restored);
+      if (new URLSearchParams(window.location.search).has("s")) saveUrl(restored, false);
+      setTheme(selected); setReady(true);
+    });
     const onPop = () => setState(readUrl());
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -61,7 +65,7 @@ export default function WorkflowApp() {
     </header>
 
     <section className="hero" aria-label="Прогресс маршрута">
-      <div className="hero-top"><div><span className="kicker">WORKFLOW / НЕДВИЖИМОСТЬ</span><h1>Каждый шаг сделки —<br /><em>на своём месте.</em></h1><p>Выбирайте ответ и двигайтесь по ситуации. При необходимости вернитесь к проверке или отправьте ссылку коллеге.</p></div><div className="progress-number"><strong>{percent}<span>%</span></strong><small>маршрута пройдено</small></div></div>
+      <div className="progress-heading"><span>Прогресс сделки</span><strong>{percent}%</strong></div>
       <div className="meter" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс прохождения"><div style={{ width: `${percent}%` }} /></div>
       <div className="phase-grid">{phases.map((phase, index) => <div className={`phase ${index < activePhase ? "passed" : ""} ${index === activePhase ? "active" : ""}`} key={phase.id}><span className="phase-index">{index < activePhase ? <Check size={14} /> : String(index + 1).padStart(2, "0")}</span><span>{phase.label}</span></div>)}</div>
     </section>

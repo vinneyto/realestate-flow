@@ -4,6 +4,56 @@ export type WorkflowState = { v: 1; trail: CardId[]; answers: Record<string, str
 export const initialState: WorkflowState = { v: 1, trail: ["C01"], answers: {}, checks: {} };
 export const currentId = (state: WorkflowState): CardId => state.trail[state.trail.length - 1];
 
+// Short words in the address bar describe the route instead of exposing card codes or base64 JSON.
+const cardSlug: Record<CardId, string> = {
+  C01: "client", C02: "object", C03: "legal-review", C04: "services", C05: "ownership",
+  B01: "purchase", B02: "gift", B03: "inheritance", B04: "renovation", B05: "privatization",
+  B06: "housing-coop", B07: "annuity", B08: "new-build", B09: "court",
+  C06: "previous-owner", C07: "advance-docs", C08: "payment-type", C09: "payment-docs",
+  C10: "payment-wait", C11: "open-issues", C12: "deal-docs", C13: "fresh-docs",
+  C14: "contracts", C15: "signing", C16: "settlement", C17: "handover",
+  C18: "closing", C19: "completed", C20: "archived",
+};
+const slugCard = Object.fromEntries(Object.entries(cardSlug).map(([id, slug]) => [slug, id])) as Record<string, CardId>;
+
+export function writeStateToSearch(params: URLSearchParams, state: WorkflowState): URLSearchParams {
+  const next = new URLSearchParams(params);
+  for (const key of ["s", "path", "done", "answer"]) next.delete(key);
+  if (state.trail.length === 1 && Object.values(state.checks).every(indices => indices.length === 0) && !Object.keys(state.answers).length) return next;
+  next.set("path", state.trail.map(id => cardSlug[id]).join("."));
+  for (const [id, indices] of Object.entries(state.checks)) {
+    if (!(id in cards)) continue;
+    for (const index of indices) next.append("done", `${cardSlug[id as CardId]}.${index + 1}`);
+  }
+  for (const [id, answer] of Object.entries(state.answers)) {
+    if (id in cards) next.append("answer", `${cardSlug[id as CardId]}.${answer}`);
+  }
+  return next;
+}
+
+export function readStateFromSearch(params: URLSearchParams): WorkflowState {
+  const path = params.get("path");
+  if (path === null) return decodeState(params.get("s")); // Existing shared links remain valid.
+  if (!path || path.length > 6000) return initialState;
+  const slugs = path.split(".");
+  if (slugs.some(slug => !(slug in slugCard))) return initialState;
+  const checks: Record<string, number[]> = {};
+  const answers: Record<string, string> = {};
+  if (params.getAll("done").length > 200 || params.getAll("answer").length > 100) return initialState;
+  for (const item of params.getAll("done")) {
+    const match = /^([a-z-]+)\.([1-9][0-9]*)$/.exec(item);
+    if (!match || !(match[1] in slugCard)) return initialState;
+    const id = slugCard[match[1]];
+    (checks[id] ??= []).push(Number(match[2]) - 1);
+  }
+  for (const item of params.getAll("answer")) {
+    const match = /^([a-z-]+)\.([a-z-]+)$/.exec(item);
+    if (!match || !(match[1] in slugCard)) return initialState;
+    answers[slugCard[match[1]]] = match[2];
+  }
+  return normalizeState({ v: 1, trail: slugs.map(slug => slugCard[slug]), answers, checks });
+}
+
 function asBase64Url(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
@@ -19,7 +69,11 @@ export function encodeState(state: WorkflowState): string { return asBase64Url(J
 export function decodeState(value: string | null): WorkflowState {
   if (!value || value.length > 12000) return initialState;
   try {
-    const parsed: unknown = JSON.parse(fromBase64Url(value));
+    return normalizeState(JSON.parse(fromBase64Url(value)));
+  } catch { return initialState; }
+}
+
+function normalizeState(parsed: unknown): WorkflowState {
     if (!parsed || typeof parsed !== "object") return initialState;
     const candidate = parsed as Partial<WorkflowState>;
     if (candidate.v !== 1 || !Array.isArray(candidate.trail) || candidate.trail.length < 1 || candidate.trail.length > 100) return initialState;
@@ -42,7 +96,6 @@ export function decodeState(value: string | null): WorkflowState {
       }
     }
     return { v: 1, trail, answers, checks };
-  } catch { return initialState; }
 }
 
 export function takeChoice(state: WorkflowState, choiceId: string): WorkflowState {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cards } from "../src/features/workflow/cards.ts";
-import { currentId, decodeState, encodeState, goBack, initialState, takeChoice, toggleCheck } from "../src/features/workflow/state.ts";
+import { currentId, decodeState, encodeState, goBack, initialState, readStateFromSearch, takeChoice, toggleCheck, writeStateToSearch } from "../src/features/workflow/state.ts";
 
 function move(state, choice) { return takeChoice(state, choice); }
 
@@ -34,4 +34,25 @@ test("испорченная или подменённая ссылка безо
   assert.deepEqual(decodeState("not-base64"), initialState);
   const invalid = { v: 1, trail: ["C01", "C19"], answers: {}, checks: {} };
   assert.deepEqual(decodeState(Buffer.from(JSON.stringify(invalid)).toString("base64url")), initialState);
+});
+
+test("человекочитаемая ссылка сохраняет маршрут, ответы и отметки", () => {
+  let state = initialState;
+  for (const choice of ["start", "review", "accepted", "basis", "gift", "predecessor", "advance", "payment", "deposit"]) state = move(state, choice);
+  state = toggleCheck(state, 0);
+  const params = writeStateToSearch(new URLSearchParams("utm=team"), state);
+  assert.match(params.toString(), /path=client\.object\.legal-review\.services\.ownership\.gift/);
+  assert.match(params.toString(), /answer=payment-type\.deposit/);
+  assert.match(params.toString(), /done=payment-docs\.1/);
+  assert.equal(params.get("utm"), "team");
+  assert.deepEqual(readStateFromSearch(params), state);
+});
+
+test("старую ссылку можно открыть и переписать в читаемый формат", () => {
+  const old = new URLSearchParams({ s: encodeState(move(initialState, "start")) });
+  const restored = readStateFromSearch(old);
+  const modern = writeStateToSearch(old, restored);
+  assert.equal(modern.get("s"), null);
+  assert.equal(modern.get("path"), "client.object");
+  assert.deepEqual(readStateFromSearch(modern), restored);
 });
