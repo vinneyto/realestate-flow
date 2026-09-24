@@ -18,7 +18,7 @@ const order: CardId[] = ["C01", "C02", "C03", "C04", "C05", ...basisIds, "C06", 
 const position = new Map(order.map((id, index) => [id, index]));
 
 export function buildWorkflowDiagram(): string {
-  const lines = ["flowchart BT"];
+  const lines = ["flowchart TB"];
   for (const [phaseIndex, phase] of phases.entries()) {
     lines.push(`  subgraph phase_${phase.id}["${phaseIndex + 1}. ${phase.label}"]`);
     for (const card of Object.values(cards).filter(item => item.phase === phase.id)) {
@@ -26,9 +26,7 @@ export function buildWorkflowDiagram(): string {
       const label = `${card.id} · ${labels[card.id]}`;
       lines.push(card.id === "C05" ? `    ${card.id}{"${label}"}` : card.id === "C19" || card.id === "C20" ? `    ${card.id}(["${label}"])` : `    ${card.id}["${label}"]`);
       if (card.id === "C05") {
-        lines.push('    subgraph basis["Выберите одно из 9 оснований"]');
         for (const id of basisIds) lines.push(`      ${id}["${id} · ${labels[id]}"]`);
-        lines.push("    end");
       }
     }
     lines.push("  end");
@@ -38,7 +36,11 @@ export function buildWorkflowDiagram(): string {
   for (const card of Object.values(cards)) {
     for (const choice of card.choices ?? []) {
       const backwards = (position.get(choice.next) ?? 0) <= (position.get(card.id) ?? 0) && choice.next !== "C20";
-      const edge = `  ${card.id} ${backwards ? "-.->" : "-->"} ${choice.next}`;
+      // Put the return arrow at the start of a top-to-bottom edge. This keeps
+      // Mermaid's layout acyclic without reversing the meaning of the return.
+      const edge = backwards && choice.next !== card.id
+        ? `  ${choice.next} <-.- ${card.id}`
+        : `  ${card.id} ${backwards ? "-.->" : "-->"} ${choice.next}`;
       edges.add(edge); // Multiple payment types may converge on the same card.
     }
   }

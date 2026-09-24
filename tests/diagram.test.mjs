@@ -10,11 +10,17 @@ test("схема содержит каждую карточку и все уни
   for (const card of Object.values(cards)) {
     assert.match(diagram, new RegExp(`^\\s*${card.id}[\\[{(]`, "m"));
     for (const next of new Set(card.choices?.map(choice => choice.next) ?? [])) {
-      assert.match(diagram, new RegExp(`^\\s*${card.id} (-\\.->|-->) ${next}$`, "m"));
+      assert.ok(
+        diagram.includes(`  ${card.id} --> ${next}`) ||
+        diagram.includes(`  ${card.id} -.-> ${next}`) ||
+        diagram.includes(`  ${next} <-.- ${card.id}`),
+        `${card.id} → ${next} отсутствует в схеме`,
+      );
     }
   }
   assert.match(diagram, /C03 --> C20/);
-  assert.match(diagram, /C20 -.-> C02/);
+  assert.match(diagram, /C02 <-.- C20/);
+  assert.match(diagram, /C02 <-.- C03/);
   assert.match(diagram, /C18 --> C19/);
   assert.equal(diagram.match(/C08 --> C09/g)?.length, 1);
 });

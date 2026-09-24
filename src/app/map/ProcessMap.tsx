@@ -32,9 +32,15 @@ export default function ProcessMap() {
       try {
         const mermaid = (await import("mermaid")).default;
         if (cancelled) return;
-        mermaid.initialize({ startOnLoad: false, theme: theme === "dark" ? "dark" : "default", securityLevel: "strict", flowchart: { htmlLabels: false, useMaxWidth: false, nodeSpacing: 28, rankSpacing: 46, curve: "basis" } });
-        const result = await mermaid.render(`workflow-overview-${++renderId}`, diagram);
-        if (!cancelled) { setSvg(result.svg); setError(false); }
+        mermaid.initialize({ startOnLoad: false, theme: theme === "dark" ? "dark" : "default", securityLevel: "strict", htmlLabels: false, flowchart: { look: "classic", wrappingWidth: 230, useMaxWidth: false, nodeSpacing: 28, rankSpacing: 46, curve: "basis" } });
+        const id = `workflow-overview-${++renderId}`;
+        const result = await mermaid.render(id, diagram);
+        // Mermaid 12 omits the arrowhead on one-sided dotted backward links.
+        // Restore its built-in start marker on those links after layout.
+        const renderedSvg = result.svg.replace(/<path\b[^>]*class="[^"]*edge-pattern-dotted[^"]*"[^>]*>/g, path =>
+          path.includes("marker-end=") ? path : path.replace(/>$/, ` marker-start="url(#${id}_flowchart-v2-pointStart)">`),
+        );
+        if (!cancelled) { setSvg(renderedSvg); setError(false); }
       } catch (cause) {
         console.error("Не удалось построить Mermaid-схему", cause);
         if (!cancelled) { setError(true); setSvg(""); }
