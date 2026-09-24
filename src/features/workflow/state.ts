@@ -4,7 +4,7 @@ export type WorkflowState = { v: 1; trail: CardId[]; answers: Record<string, str
 export const initialState: WorkflowState = { v: 1, trail: ["C01"], answers: {}, checks: {} };
 export const currentId = (state: WorkflowState): CardId => state.trail[state.trail.length - 1];
 
-// Accept links from the previous readable URL format; new links use the three-character codes shown on cards.
+// Accept the two interim readable URL formats so previously shared links continue to work.
 const legacyCardSlug: Record<CardId, string> = {
   C01: "client", C02: "object", C03: "legal-review", C04: "services", C05: "ownership",
   B01: "purchase", B02: "gift", B03: "inheritance", B04: "renovation", B05: "privatization",
@@ -23,14 +23,7 @@ export function writeStateToSearch(params: URLSearchParams, state: WorkflowState
   const next = new URLSearchParams(params);
   for (const key of ["s", "path", "done", "answer"]) next.delete(key);
   if (state.trail.length === 1 && Object.values(state.checks).every(indices => indices.length === 0) && !Object.keys(state.answers).length) return next;
-  next.set("path", state.trail.join("."));
-  for (const [id, indices] of Object.entries(state.checks)) {
-    if (!(id in cards)) continue;
-    for (const index of indices) next.append("done", `${id}.${index + 1}`);
-  }
-  for (const [id, answer] of Object.entries(state.answers)) {
-    if (id in cards) next.append("answer", `${id}.${answer}`);
-  }
+  next.set("s", encodeState(state));
   return next;
 }
 

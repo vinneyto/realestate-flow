@@ -26,7 +26,7 @@ export default function WorkflowApp() {
     queueMicrotask(() => {
       const restored = readUrl();
       setState(restored);
-      if (new URLSearchParams(window.location.search).has("s") || new URLSearchParams(window.location.search).has("path")) saveUrl(restored, false);
+      if (new URLSearchParams(window.location.search).has("path")) saveUrl(restored, false);
       setTheme(selected); setReady(true);
     });
     const onPop = () => setState(readUrl());
