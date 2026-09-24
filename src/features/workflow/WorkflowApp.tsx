@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Moon, RotateCcw, Sun } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Network, Moon, RotateCcw, Sun } from "lucide-react";
 import Button from "@/shared/ui/button";
 import Card from "@/shared/ui/card";
 import { basisIds, cards, coreIds, phases } from "./cards";
@@ -60,6 +61,7 @@ export default function WorkflowApp() {
       <div className="brand"><div className="brand-mark">m<span>→</span></div><div><strong>Маршрут сделки</strong><small>Интерактивный помощник риелтора</small></div></div>
       <div className="toolbar">
         <Button variant="ghost" className="icon-button" onClick={switchTheme} aria-label={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}>{theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}</Button>
+        <Link className="map-link" href={`/map${ready ? window.location.search : ""}`} aria-label="Схема процесса"><Network size={16} /> Схема</Link>
         <Button variant="outline" onClick={share} className="share-button"><Copy size={16} />{copied ? "Ссылка скопирована" : "Поделиться"}</Button>
       </div>
     </header>
