@@ -20,5 +20,20 @@
 .map-diagram { display:table; padding:22px; transform-origin:top left; }
 .map-diagram svg { display:block; max-width:none; height:auto; }
 .map-status { margin:0; padding:30px; color:var(--muted-foreground); }
+.map-status button { margin-left:12px; }
 @media(max-width:800px) { .map-heading { align-items:flex-start; flex-direction:column; gap:12px; }.map-controls { flex-direction:column; align-items:flex-start; }.map-actions { flex-wrap:wrap; }.map-viewport { min-height:60vh; max-height:72vh; } }
-@media(max-width:500px) { .map-heading { margin:26px 0 20px; }.map-back { font-size:12px; }.map-legend { flex-wrap:wrap; line-height:1.4; }.map-counts { white-space:normal; }.map-diagram { padding:12px; } }
+@media(max-width:500px) {
+  .map-page .topbar { gap:10px; }
+  .map-page .brand { gap:10px; min-width:0; }
+  .map-page .brand strong { white-space:nowrap; }
+  .map-page .toolbar { gap:6px; flex:none; }
+  .map-back { width:40px; height:40px; padding:0; justify-content:center; }
+  .map-back span { display:none; }
+  .map-heading { margin:26px 0 20px; }
+  .map-legend { flex-wrap:wrap; line-height:1.4; }
+  .map-counts { white-space:normal; }
+  .map-actions { width:100%; justify-content:space-between; gap:5px; }
+  .map-actions button { min-width:35px; padding:7px; }
+  .map-actions button:first-child span { display:none; }
+  .map-diagram { padding:12px; }
+}

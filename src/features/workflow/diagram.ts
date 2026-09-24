@@ -18,7 +18,7 @@ const order: CardId[] = ["C01", "C02", "C03", "C04", "C05", ...basisIds, "C06", 
 const position = new Map(order.map((id, index) => [id, index]));
 
 export function buildWorkflowDiagram(): string {
-  const lines = ["flowchart TB"];
+  const lines = ["flowchart BT"];
   for (const [phaseIndex, phase] of phases.entries()) {
     lines.push(`  subgraph phase_${phase.id}["${phaseIndex + 1}. ${phase.label}"]`);
     for (const card of Object.values(cards).filter(item => item.phase === phase.id)) {
