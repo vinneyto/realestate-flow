@@ -26,7 +26,7 @@ export default function WorkflowApp() {
     queueMicrotask(() => {
       const restored = readUrl();
       setState(restored);
-      if (new URLSearchParams(window.location.search).has("s")) saveUrl(restored, false);
+      if (new URLSearchParams(window.location.search).has("s") || new URLSearchParams(window.location.search).has("path")) saveUrl(restored, false);
       setTheme(selected); setReady(true);
     });
     const onPop = () => setState(readUrl());
@@ -83,7 +83,7 @@ export default function WorkflowApp() {
           <div className="card-top"><div className="step-symbol">{id === "C19" ? <CheckCircle2 size={25} /> : id === "C20" ? <RotateCcw size={23} /> : <span>{card.id.startsWith("B") ? "↳" : "?"}</span>}</div><span className="card-code">{card.id}</span></div>
           <h2>{card.title}</h2><p className="description">{card.description}</p>
           {card.checklist.length > 0 && <section className="checklist"><h3>Что проверить <span>{(state.checks[id] ?? []).length}/{card.checklist.length}</span></h3><div className="checks">{card.checklist.map((item, index) => <label key={index} className="check-row"><input type="checkbox" checked={(state.checks[id] ?? []).includes(index)} onChange={() => update(toggleCheck(state, index))} /><span className="custom-check"><Check size={13} /></span><span>{item}</span></label>)}</div></section>}
-          {card.choices && <section className="choices"><h3>{card.question}</h3><div className={id === "C05" ? "options basis-options" : "options"}>{card.choices.map(choice => <button className="option" key={choice.id} onClick={() => update(takeChoice(state, choice.id))}><span className="option-copy"><strong>{choice.label}</strong><small>{choice.hint}</small></span><ArrowRight size={19} aria-hidden="true" /></button>)}</div></section>}
+          {card.choices && <section className="choices"><h3>{card.question}</h3><div className={id === "C05" ? "options basis-options" : "options"}>{card.choices.map(choice => <button className="option" key={choice.id} onClick={() => update(takeChoice(state, choice.id))}><span className="option-copy"><strong>{choice.label}</strong><small><span className="option-next">{choice.next === id ? "На этом шаге:" : "Далее:"}</span> {choice.hint}</small></span><ArrowRight size={19} aria-hidden="true" /></button>)}</div></section>}
           {id === "C19" && <div className="finish-note"><CheckCircle2 size={19} /> Маршрут пройден. Можно скопировать ссылку с итогом.</div>}
         </Card>
         <div className="card-footer"><Button variant="ghost" disabled={state.trail.length < 2} onClick={() => update(goBack(state))}><ArrowLeft size={16} /> Назад</Button><span>{selectedBasis ? `Ветка права: ${cards[selectedBasis].eyebrow.replace("Основание · ", "")}` : "Основание права будет выбрано на этапе проверки"}</span><Button variant="ghost" onClick={() => update(initialState)}><RotateCcw size={15} /> Сначала</Button></div>

@@ -36,14 +36,14 @@ test("испорченная или подменённая ссылка безо
   assert.deepEqual(decodeState(Buffer.from(JSON.stringify(invalid)).toString("base64url")), initialState);
 });
 
-test("человекочитаемая ссылка сохраняет маршрут, ответы и отметки", () => {
+test("короткие коды карточек сохраняют маршрут, ответы и отметки", () => {
   let state = initialState;
   for (const choice of ["start", "review", "accepted", "basis", "gift", "predecessor", "advance", "payment", "deposit"]) state = move(state, choice);
   state = toggleCheck(state, 0);
   const params = writeStateToSearch(new URLSearchParams("utm=team"), state);
-  assert.match(params.toString(), /path=client\.object\.legal-review\.services\.ownership\.gift/);
-  assert.match(params.toString(), /answer=payment-type\.deposit/);
-  assert.match(params.toString(), /done=payment-docs\.1/);
+  assert.match(params.toString(), /path=C01\.C02\.C03\.C04\.C05\.B02/);
+  assert.match(params.toString(), /answer=C08\.deposit/);
+  assert.match(params.toString(), /done=C09\.1/);
   assert.equal(params.get("utm"), "team");
   assert.deepEqual(readStateFromSearch(params), state);
 });
@@ -53,6 +53,21 @@ test("старую ссылку можно открыть и переписат�
   const restored = readStateFromSearch(old);
   const modern = writeStateToSearch(old, restored);
   assert.equal(modern.get("s"), null);
-  assert.equal(modern.get("path"), "client.object");
+  assert.equal(modern.get("path"), "C01.C02");
   assert.deepEqual(readStateFromSearch(modern), restored);
+});
+
+test("длинные ссылки из предыдущей версии тоже открываются", () => {
+  const previous = new URLSearchParams("path=client.object.legal-review.services.ownership.purchase&done=object.1&answer=ownership.purchase");
+  const state = readStateFromSearch(previous);
+  assert.equal(currentId(state), "B01");
+  assert.deepEqual(state.checks.C02, [0]);
+  assert.equal(writeStateToSearch(previous, state).get("path"), "C01.C02.C03.C04.C05.B01");
+});
+
+test("ответ на вопрос и описание следующего шага хранятся отдельно", () => {
+  assert.equal(cards.C12.question, "Пакет собран?");
+  assert.equal(cards.C12.choices[0].label, "Да, пакет собран");
+  assert.equal(cards.C12.choices[0].hint, "Актуальность сведений перед подписанием");
+  for (const card of Object.values(cards)) for (const choice of card.choices ?? []) assert.ok(choice.label && choice.hint);
 });

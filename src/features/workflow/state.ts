@@ -4,8 +4,8 @@ export type WorkflowState = { v: 1; trail: CardId[]; answers: Record<string, str
 export const initialState: WorkflowState = { v: 1, trail: ["C01"], answers: {}, checks: {} };
 export const currentId = (state: WorkflowState): CardId => state.trail[state.trail.length - 1];
 
-// Short words in the address bar describe the route instead of exposing card codes or base64 JSON.
-const cardSlug: Record<CardId, string> = {
+// Accept links from the previous readable URL format; new links use the three-character codes shown on cards.
+const legacyCardSlug: Record<CardId, string> = {
   C01: "client", C02: "object", C03: "legal-review", C04: "services", C05: "ownership",
   B01: "purchase", B02: "gift", B03: "inheritance", B04: "renovation", B05: "privatization",
   B06: "housing-coop", B07: "annuity", B08: "new-build", B09: "court",
@@ -14,19 +14,22 @@ const cardSlug: Record<CardId, string> = {
   C14: "contracts", C15: "signing", C16: "settlement", C17: "handover",
   C18: "closing", C19: "completed", C20: "archived",
 };
-const slugCard = Object.fromEntries(Object.entries(cardSlug).map(([id, slug]) => [slug, id])) as Record<string, CardId>;
+const routeCard = Object.fromEntries([
+  ...Object.keys(cards).map(id => [id, id]),
+  ...Object.entries(legacyCardSlug).map(([id, slug]) => [slug, id]),
+]) as Record<string, CardId>;
 
 export function writeStateToSearch(params: URLSearchParams, state: WorkflowState): URLSearchParams {
   const next = new URLSearchParams(params);
   for (const key of ["s", "path", "done", "answer"]) next.delete(key);
   if (state.trail.length === 1 && Object.values(state.checks).every(indices => indices.length === 0) && !Object.keys(state.answers).length) return next;
-  next.set("path", state.trail.map(id => cardSlug[id]).join("."));
+  next.set("path", state.trail.join("."));
   for (const [id, indices] of Object.entries(state.checks)) {
     if (!(id in cards)) continue;
-    for (const index of indices) next.append("done", `${cardSlug[id as CardId]}.${index + 1}`);
+    for (const index of indices) next.append("done", `${id}.${index + 1}`);
   }
   for (const [id, answer] of Object.entries(state.answers)) {
-    if (id in cards) next.append("answer", `${cardSlug[id as CardId]}.${answer}`);
+    if (id in cards) next.append("answer", `${id}.${answer}`);
   }
   return next;
 }
@@ -35,23 +38,23 @@ export function readStateFromSearch(params: URLSearchParams): WorkflowState {
   const path = params.get("path");
   if (path === null) return decodeState(params.get("s")); // Existing shared links remain valid.
   if (!path || path.length > 6000) return initialState;
-  const slugs = path.split(".");
-  if (slugs.some(slug => !(slug in slugCard))) return initialState;
+  const codes = path.split(".");
+  if (codes.some(code => !(code in routeCard))) return initialState;
   const checks: Record<string, number[]> = {};
   const answers: Record<string, string> = {};
   if (params.getAll("done").length > 200 || params.getAll("answer").length > 100) return initialState;
   for (const item of params.getAll("done")) {
-    const match = /^([a-z-]+)\.([1-9][0-9]*)$/.exec(item);
-    if (!match || !(match[1] in slugCard)) return initialState;
-    const id = slugCard[match[1]];
+    const match = /^([A-Za-z0-9-]+)\.([1-9][0-9]*)$/.exec(item);
+    if (!match || !(match[1] in routeCard)) return initialState;
+    const id = routeCard[match[1]];
     (checks[id] ??= []).push(Number(match[2]) - 1);
   }
   for (const item of params.getAll("answer")) {
-    const match = /^([a-z-]+)\.([a-z-]+)$/.exec(item);
-    if (!match || !(match[1] in slugCard)) return initialState;
-    answers[slugCard[match[1]]] = match[2];
+    const match = /^([A-Za-z0-9-]+)\.([a-z-]+)$/.exec(item);
+    if (!match || !(match[1] in routeCard)) return initialState;
+    answers[routeCard[match[1]]] = match[2];
   }
-  return normalizeState({ v: 1, trail: slugs.map(slug => slugCard[slug]), answers, checks });
+  return normalizeState({ v: 1, trail: codes.map(code => routeCard[code]), answers, checks });
 }
 
 function asBase64Url(value: string): string {
