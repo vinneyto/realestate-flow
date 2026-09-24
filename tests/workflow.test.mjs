@@ -36,33 +36,42 @@ test("испорченная или подменённая ссылка безо
   assert.deepEqual(decodeState(Buffer.from(JSON.stringify(invalid)).toString("base64url")), initialState);
 });
 
-test("короткие коды карточек сохраняют маршрут, ответы и отметки", () => {
+test("один параметр s сохраняет маршрут, ответы и отметки", () => {
   let state = initialState;
   for (const choice of ["start", "review", "accepted", "basis", "gift", "predecessor", "advance", "payment", "deposit"]) state = move(state, choice);
   state = toggleCheck(state, 0);
   const params = writeStateToSearch(new URLSearchParams("utm=team"), state);
-  assert.match(params.toString(), /path=C01\.C02\.C03\.C04\.C05\.B02/);
-  assert.match(params.toString(), /answer=C08\.deposit/);
-  assert.match(params.toString(), /done=C09\.1/);
+  assert.ok(params.get("s"));
+  assert.equal(params.get("path"), null);
+  assert.equal(params.get("done"), null);
+  assert.equal(params.get("answer"), null);
   assert.equal(params.get("utm"), "team");
   assert.deepEqual(readStateFromSearch(params), state);
 });
 
-test("старую ссылку можно открыть и переписать в читаемый формат", () => {
+test("исходная ссылка с s продолжает открываться", () => {
   const old = new URLSearchParams({ s: encodeState(move(initialState, "start")) });
   const restored = readStateFromSearch(old);
-  const modern = writeStateToSearch(old, restored);
-  assert.equal(modern.get("s"), null);
-  assert.equal(modern.get("path"), "C01.C02");
-  assert.deepEqual(readStateFromSearch(modern), restored);
+  assert.equal(writeStateToSearch(old, restored).get("s"), old.get("s"));
 });
 
-test("длинные ссылки из предыдущей версии тоже открываются", () => {
+test("ссылки с длинными названиями переводятся в s", () => {
   const previous = new URLSearchParams("path=client.object.legal-review.services.ownership.purchase&done=object.1&answer=ownership.purchase");
   const state = readStateFromSearch(previous);
   assert.equal(currentId(state), "B01");
   assert.deepEqual(state.checks.C02, [0]);
-  assert.equal(writeStateToSearch(previous, state).get("path"), "C01.C02.C03.C04.C05.B01");
+  const rewritten = writeStateToSearch(previous, state);
+  assert.equal(rewritten.get("path"), null);
+  assert.deepEqual(readStateFromSearch(rewritten), state);
+});
+
+test("ссылки с короткими кодами переводятся в s", () => {
+  const previous = new URLSearchParams("path=C01.C02.C03.C04.C05.B01&done=C02.1&answer=C05.purchase");
+  const state = readStateFromSearch(previous);
+  assert.equal(currentId(state), "B01");
+  const rewritten = writeStateToSearch(previous, state);
+  assert.equal(rewritten.get("path"), null);
+  assert.deepEqual(readStateFromSearch(rewritten), state);
 });
 
 test("ответ на вопрос и описание следующего шага хранятся отдельно", () => {
