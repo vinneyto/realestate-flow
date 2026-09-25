@@ -118,7 +118,9 @@ export function goBack(state: WorkflowState): WorkflowState {
   return { v: 1, trail, answers: Object.fromEntries(Object.entries(state.answers).filter(([id]) => retained.has(id as CardId))), checks: Object.fromEntries(Object.entries(state.checks).filter(([id]) => retained.has(id as CardId))) };
 }
 export function toggleCheck(state: WorkflowState, index: number): WorkflowState {
-  const id = currentId(state);
+  return toggleCardCheck(state, currentId(state), index);
+}
+export function toggleCardCheck(state: WorkflowState, id: CardId, index: number): WorkflowState {
   if (!Number.isInteger(index) || index < 0 || index >= cards[id].checklist.length) return state;
   const set = new Set(state.checks[id] ?? []);
   if (set.has(index)) set.delete(index); else set.add(index);

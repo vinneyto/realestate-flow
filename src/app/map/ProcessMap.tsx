@@ -1,66 +1,201 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Copy, Maximize2, Minus, Moon, Plus, Sun } from "lucide-react";
+import {
+  applyNodeChanges, Background, BackgroundVariant, BaseEdge, Controls, Handle, MarkerType,
+  MiniMap, Position, ReactFlow, ReactFlowProvider, useNodesInitialized,
+  useReactFlow, type Edge, type EdgeProps, type Node, type NodeProps,
+} from "@xyflow/react";
+import { ArrowLeft, Expand, Focus, LayoutGrid, Moon, Shrink, Sun } from "lucide-react";
 import Button from "@/shared/ui/button";
-import { buildWorkflowDiagram, diagramStats } from "@/features/workflow/diagram";
+import { basisIds, cards, phases, type CardId } from "@/features/workflow/cards";
+import { buildGraphConnections } from "@/features/workflow/graph";
+import { currentId, initialState, readStateFromSearch, toggleCardCheck, writeStateToSearch, type WorkflowState } from "@/features/workflow/state";
 
-const diagram = buildWorkflowDiagram();
-let renderId = 0;
-let renderQueue = Promise.resolve();
+type CardNode = Node<{ cardId: CardId }, "card">;
+type BoardNode = CardNode | Node<{ label: string; number: number }, "stage">;
+const connections = buildGraphConnections();
+const choiceCount = Object.values(cards).reduce((total, card) => total + (card.choices?.length ?? 0), 0);
+const cardWidth = 350, columnGap = 58;
+const columnX = [0, cardWidth + columnGap, (cardWidth + columnGap) * 2];
+const centerX = columnX[1], stageWidth = columnX[2] + cardWidth + 100;
+const stageGap = 105, cardGap = 68;
+
+type BoardContextValue = { state: WorkflowState; toggle: (id: CardId, index: number) => void; search: string };
+const BoardContext = createContext<BoardContextValue | null>(null);
+
+function WorkflowNode({ data }: NodeProps<CardNode>) {
+  const context = useContext(BoardContext);
+  if (!context) return null;
+  const { state, toggle } = context;
+  const card = cards[data.cardId], active = currentId(state) === card.id;
+  const visited = state.trail.includes(card.id), checked = new Set(state.checks[card.id] ?? []);
+  return <article className={`graph-card ${active ? "is-current" : ""} ${visited ? "is-visited" : ""} ${card.id === "C19" ? "is-finish" : ""}`}>
+    <Handle id="in" type="target" position={Position.Top} />
+    <Handle id="out" type="source" position={Position.Bottom} />
+    <Handle id="return-in" type="target" position={Position.Right} />
+    <Handle id="return-out" type="source" position={Position.Right} />
+    <header className="graph-card-heading"><span>{card.eyebrow}</span><b>{card.id}</b></header>
+    <h2>{card.title}</h2><p>{card.description}</p>
+    {card.checklist.length > 0 && <section className="graph-checks"><h3>Что проверить <span>{checked.size}/{card.checklist.length}</span></h3>
+      {card.checklist.map((item, index) => <label className="graph-check nodrag" key={index}>
+        <input type="checkbox" checked={checked.has(index)} onChange={() => toggle(card.id, index)} /><span>{item}</span>
+      </label>)}
+    </section>}
+    {card.choices && <section className="graph-choices"><h3>{card.question}</h3>
+      {card.choices.map(choice => <div className="graph-choice" key={choice.id}>
+        <strong>{choice.label}</strong><span>→ {cards[choice.next].title}</span><small>{choice.hint}</small>
+      </div>)}
+    </section>}
+  </article>;
+}
+
+function StageNode({ data }: NodeProps<Node<{ label: string; number: number }, "stage">>) {
+  return <div className="graph-stage"><div className="graph-stage-title"><span>{String(data.number).padStart(2, "0")}</span>{data.label}</div></div>;
+}
+
+function ReturnEdge({ sourceX, sourceY, targetX, targetY, markerEnd, style }: EdgeProps) {
+  const bend = Math.max(sourceX, targetX) + Math.min(190, Math.max(78, Math.abs(sourceY - targetY) * 0.11));
+  return <BaseEdge path={`M ${sourceX} ${sourceY} C ${bend} ${sourceY}, ${bend} ${targetY}, ${targetX} ${targetY}`} markerEnd={markerEnd}
+    style={{ ...style, strokeDasharray: "6 5" }} />;
+}
+
+const nodeTypes = { card: WorkflowNode, stage: StageNode };
+const edgeTypes = { return: ReturnEdge };
+const initialNodes: BoardNode[] = Object.keys(cards).map(id => ({
+  id, type: "card", position: { x: 0, y: 0 }, data: { cardId: id as CardId },
+  draggable: false, style: { opacity: 0, width: cardWidth },
+}));
+const edges: Edge[] = connections.map(({ source, target, backward, choices }) => ({
+  id: `${source}-${target}`, source, target,
+  sourceHandle: backward ? "return-out" : "out", targetHandle: backward ? "return-in" : "in",
+  type: backward ? "return" : "smoothstep",
+  markerEnd: { type: MarkerType.ArrowClosed, color: backward ? "#e68450" : "#868581" },
+  style: { stroke: backward ? "#e68450" : "#868581", strokeWidth: 1.65 },
+  label: choices.length > 1 ? `${choices.length} варианта` : undefined, zIndex: 1,
+}));
+
+function GraphCanvas({ state, toggle, search }: BoardContextValue) {
+  const [nodes, setNodes] = useState<BoardNode[]>(initialNodes);
+  const [laidOut, setLaidOut] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<CardId>(currentId(state));
+  const initialFocus = useRef(currentId(state));
+  const initialized = useNodesInitialized();
+  const flow = useReactFlow<BoardNode, Edge>();
+  const boardContext = useMemo(() => ({ state, toggle, search }), [state, toggle, search]);
+  const focusCard = useCallback((id: CardId, duration = 450) => {
+    const node = flow.getNode(id);
+    if (!node) return;
+    void flow.setCenter(node.position.x + cardWidth / 2, node.position.y + (node.measured?.height ?? 400) / 2, { zoom: 0.9, duration });
+  }, [flow]);
+  const onNodesChange = useCallback((changes: Parameters<typeof applyNodeChanges<BoardNode>>[0]) => {
+    setNodes(previous => applyNodeChanges(changes, previous));
+  }, []);
+
+  useEffect(() => {
+    if (!initialized || laidOut) return;
+    const height = (id: CardId) => nodes.find(node => node.id === id)?.measured?.height ?? 420;
+    const positions = new Map<CardId, { x: number; y: number }>();
+    const stages: BoardNode[] = [];
+    let cursor = 0;
+    function stage(number: number, ids: CardId[], arrange: (top: number) => number) {
+      const start = cursor;
+      cursor = arrange(start + 85);
+      stages.push({ id: `stage-${number}`, type: "stage", position: { x: -50, y: start },
+        data: { label: phases[number - 1].label, number }, draggable: false, selectable: false,
+        style: { width: stageWidth, height: cursor - start + 35, zIndex: -1 },
+      });
+      cursor += stageGap;
+      for (const id of ids) if (!positions.has(id)) throw new Error(`Нет позиции для ${id}`);
+    }
+    function stack(ids: CardId[], top: number, x = centerX) {
+      let y = top;
+      for (const id of ids) { positions.set(id, { x, y }); y += height(id) + cardGap; }
+      return y;
+    }
+    stage(1, ["C01", "C02"], top => stack(["C01", "C02"], top));
+    stage(2, ["C03", "C04", "C05", ...basisIds, "C06", "C20"], top => {
+      const c03 = top;
+      let y = stack(["C03", "C04", "C05"], top);
+      positions.set("C20", { x: columnX[2], y: c03 });
+      for (let row = 0; row < 3; row++) {
+        const rowIds = basisIds.slice(row * 3, row * 3 + 3);
+        rowIds.forEach((id, column) => positions.set(id, { x: columnX[column], y }));
+        y += Math.max(...rowIds.map(height)) + cardGap;
+      }
+      positions.set("C06", { x: centerX, y });
+      return y + height("C06") + cardGap;
+    });
+    stage(3, ["C07", "C08", "C09", "C10", "C11"], top => {
+      let y = stack(["C07", "C08", "C09"], top);
+      const c09 = positions.get("C09")!.y;
+      positions.set("C10", { x: columnX[2], y: c09 });
+      y = Math.max(y, c09 + height("C10") + cardGap);
+      return stack(["C11"], y);
+    });
+    stage(4, ["C12", "C13", "C14", "C15"], top => stack(["C12", "C13", "C14", "C15"], top));
+    stage(5, ["C16", "C17", "C18", "C19"], top => stack(["C16", "C17", "C18", "C19"], top));
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setNodes([...stages, ...nodes.map(node => ({ ...node, position: positions.get(node.id as CardId)!, style: { width: cardWidth } }))]);
+      setLaidOut(true);
+    });
+    return () => { cancelled = true; };
+  }, [initialized, laidOut, nodes]);
+
+  useEffect(() => {
+    if (!laidOut) {
+      initialFocus.current = currentId(state);
+      queueMicrotask(() => setSelectedCard(currentId(state)));
+    }
+  }, [state, laidOut]);
+
+  useEffect(() => {
+    if (!laidOut) return;
+    const frame = requestAnimationFrame(() => focusCard(initialFocus.current, 0));
+    return () => cancelAnimationFrame(frame);
+  }, [laidOut, focusCard]);
+
+  return <BoardContext.Provider value={boardContext}>
+    <div className="graph-workspace">
+      <ReactFlow<BoardNode, Edge> nodes={nodes} edges={laidOut ? edges : []} onNodesChange={onNodesChange} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+        nodesDraggable={false} nodesConnectable={false} panOnDrag zoomOnPinch zoomOnScroll
+        minZoom={0.025} maxZoom={1.5} fitViewOptions={{ padding: 0.08, minZoom: 0.025 }}>
+        <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
+        <Controls showInteractive={false} aria-label="Управление масштабом схемы" />
+        <MiniMap pannable zoomable nodeColor={node => node.id.startsWith("stage-") ? "transparent" : node.id === currentId(state) ? "#f18d56" : "#b8aaa1"} />
+      </ReactFlow>
+      {!laidOut && <div className="graph-loading">Раскладываем карточки…</div>}
+    </div>
+    <div className="graph-jump">
+      <select aria-label="Перейти к карточке" value={selectedCard} onChange={event => { const id = event.target.value as CardId; setSelectedCard(id); focusCard(id); }}>
+        {Object.values(cards).map(card => <option key={card.id} value={card.id}>{card.id} · {card.title}</option>)}
+      </select>
+      <Button variant="outline" onClick={() => { setSelectedCard(currentId(state)); focusCard(currentId(state)); }} aria-label="К текущей карточке"><Focus size={17} /><span>Текущая</span></Button>
+      <Button variant="outline" onClick={() => flow.fitView({ padding: 0.07, duration: 500, minZoom: 0.025 })} aria-label="Показать весь граф"><LayoutGrid size={17} /><span>Весь граф</span></Button>
+    </div>
+  </BoardContext.Provider>;
+}
 
 export default function ProcessMap() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [svg, setSvg] = useState("");
-  const [error, setError] = useState(false);
-  const [zoom, setZoom] = useState(0.8);
-  const [renderAttempt, setRenderAttempt] = useState(0);
-  const [returnHref, setReturnHref] = useState("/");
-  const [copied, setCopied] = useState(false);
-  const viewport = useRef<HTMLDivElement>(null);
+  const [state, setState] = useState<WorkflowState>(initialState);
+  const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const board = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("workflow-theme") === "dark" ? "dark" : "light";
     document.documentElement.classList.toggle("dark", stored === "dark");
-    queueMicrotask(() => { setTheme(stored); setReturnHref(`/${window.location.search}`); });
+    queueMicrotask(() => { setTheme(stored); setState(readStateFromSearch(new URLSearchParams(window.location.search))); setSearch(window.location.search); });
+    const onPop = () => { setState(readStateFromSearch(new URLSearchParams(window.location.search))); setSearch(window.location.search); };
+    const onFullscreen = () => setExpanded(Boolean(document.fullscreenElement));
+    window.addEventListener("popstate", onPop);
+    document.addEventListener("fullscreenchange", onFullscreen);
+    return () => { window.removeEventListener("popstate", onPop); document.removeEventListener("fullscreenchange", onFullscreen); };
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function render() {
-      try {
-        const mermaid = (await import("mermaid")).default;
-        if (cancelled) return;
-        mermaid.initialize({ startOnLoad: false, theme: theme === "dark" ? "dark" : "default", securityLevel: "strict", htmlLabels: false, flowchart: { look: "classic", wrappingWidth: 230, useMaxWidth: false, nodeSpacing: 28, rankSpacing: 46, curve: "basis" } });
-        const id = `workflow-overview-${++renderId}`;
-        const result = await mermaid.render(id, diagram);
-        // Mermaid 12 omits the arrowhead on one-sided dotted backward links.
-        // Restore its built-in start marker on those links after layout.
-        const renderedSvg = result.svg.replace(/<path\b[^>]*class="[^"]*edge-pattern-dotted[^"]*"[^>]*>/g, path =>
-          path.includes("marker-end=") ? path : path.replace(/>$/, ` marker-start="url(#${id}_flowchart-v2-pointStart)">`),
-        );
-        if (!cancelled) { setSvg(renderedSvg); setError(false); }
-      } catch (cause) {
-        console.error("Не удалось построить Mermaid-схему", cause);
-        if (!cancelled) { setError(true); setSvg(""); }
-      }
-    }
-    // Mermaid uses shared DOM and configuration; concurrent renders can corrupt one another.
-    renderQueue = renderQueue.then(render);
-    return () => { cancelled = true; };
-  }, [theme, renderAttempt]);
-
-  useEffect(() => {
-    if (!svg) return;
-    const frame = requestAnimationFrame(() => {
-      const graph = viewport.current?.querySelector("svg");
-      if (!graph || !viewport.current) return;
-      const width = graph.viewBox.baseVal.width;
-      if (width) setZoom(Math.max(0.08, Math.min(1, (viewport.current.clientWidth - 28) / width)));
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [svg]);
 
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
@@ -68,27 +203,37 @@ export default function ProcessMap() {
     localStorage.setItem("workflow-theme", next);
     document.documentElement.classList.toggle("dark", next === "dark");
   }
-  function fitDiagram() {
-    const graph = viewport.current?.querySelector("svg");
-    if (!graph || !viewport.current) return;
-    const width = graph.viewBox.baseVal.width || graph.getBoundingClientRect().width / zoom;
-    setZoom(Math.max(0.08, Math.min(1, (viewport.current.clientWidth - 28) / width)));
-    viewport.current.scrollTo({ top: 0, left: 0 });
+  function toggle(id: CardId, index: number) {
+    const next = toggleCardCheck(state, id, index);
+    setState(next);
+    const url = new URL(window.location.href);
+    url.search = writeStateToSearch(url.searchParams, next).toString();
+    window.history.replaceState(null, "", url);
+    setSearch(url.search);
   }
-  async function copySource() {
-    try { await navigator.clipboard.writeText(diagram); setCopied(true); }
-    catch { window.prompt("Скопируйте Mermaid-схему", diagram); }
+  async function toggleFullscreen() {
+    if (document.fullscreenElement) { await document.exitFullscreen(); return; }
+    if (board.current?.requestFullscreen) { try { await board.current.requestFullscreen(); return; } catch { /* CSS fallback */ } }
+    setExpanded(value => !value);
   }
 
-  return <main className="shell map-page">
-    <header className="topbar">
+  return <main className="map-page">
+    <header className="map-topbar">
       <div className="brand"><div className="brand-mark">m<span>→</span></div><div><strong>Маршрут сделки</strong><small>Карта процесса</small></div></div>
-      <div className="toolbar"><Button variant="ghost" className="icon-button" onClick={toggleTheme} aria-label={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}>{theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}</Button><Link className="map-back" href={returnHref} aria-label="К карточкам"><ArrowLeft size={16} /><span>К карточкам</span></Link></div>
+      <div className="map-topbar-actions">
+        <span className="map-summary">{Object.keys(cards).length} карточек · {choiceCount} варианта ответа · 5 этапов</span>
+        <Button variant="ghost" className="icon-button" onClick={toggleTheme} aria-label={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}>{theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}</Button>
+        <Link className="map-back" href={`/${search}`} aria-label="К карточкам"><ArrowLeft size={16} /><span>К карточкам</span></Link>
+      </div>
     </header>
-    <section className="map-heading"><div><span className="map-eyebrow">ОБЩАЯ КАРТИНА</span><h1>Схема процесса</h1><p>Все карточки и переходы: от первичных сведений до передачи объекта и закрытия сделки. Пунктир показывает возврат, повторную проверку или ожидание.</p></div><div className="map-counts"><strong>{diagramStats.cards}</strong> карточек <span>·</span> <strong>{diagramStats.choices}</strong> перехода <span>·</span> <strong>{diagramStats.ownershipBases}</strong> оснований права</div></section>
-    <div className="map-controls"><div className="map-legend"><span className="solid-line" /> Следующий шаг <span className="dashed-line" /> Возврат / ожидание</div><div className="map-actions"><Button variant="outline" onClick={copySource} aria-label="Скопировать Mermaid-код"><Copy size={15} /><span>{copied ? "Скопировано" : "Mermaid"}</span></Button><Button variant="outline" onClick={() => setZoom(value => Math.max(0.08, +(value - 0.15).toFixed(2)))} aria-label="Уменьшить"><Minus size={16} /></Button><span className="zoom-label">{Math.round(zoom * 100)}%</span><Button variant="outline" onClick={() => setZoom(value => Math.min(2, +(value + 0.15).toFixed(2)))} aria-label="Увеличить"><Plus size={16} /></Button><Button variant="outline" onClick={fitDiagram} aria-label="Уместить схему по ширине"><Maximize2 size={16} /></Button></div></div>
-    <div className="map-viewport" ref={viewport} aria-label="Mermaid-схема маршрута сделки">
-      {error ? <div className="map-status">Не удалось построить схему. <Button variant="outline" onClick={() => setRenderAttempt(value => value + 1)}>Повторить</Button></div> : !svg ? <p className="map-status">Строим схему…</p> : <div className="map-diagram" style={{ zoom }} dangerouslySetInnerHTML={{ __html: svg }} />}
+    <div className={`map-board ${expanded ? "is-expanded" : ""}`} ref={board}>
+      <div className="map-board-top">
+        <div><strong>Граф сделки</strong><span>Перемещайте холст мышью или пальцем · прокручивайте для масштаба</span></div>
+        <Button variant="outline" onClick={toggleFullscreen} aria-label={expanded ? "Закрыть полноэкранную схему" : "Открыть схему на весь экран"}>
+          {expanded ? <Shrink size={18} /> : <Expand size={18} />}<span>{expanded ? "Свернуть" : "На весь экран"}</span>
+        </Button>
+      </div>
+      <ReactFlowProvider><GraphCanvas state={state} toggle={toggle} search={search} /></ReactFlowProvider>
     </div>
   </main>;
 }
