@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cards } from "../src/features/workflow/cards.ts";
-import { currentId, decodeState, encodeState, goBack, initialState, readStateFromSearch, takeChoice, toggleCheck, writeStateToSearch } from "../src/features/workflow/state.ts";
+import { currentId, decodeState, encodeState, goBack, initialState, readStateFromSearch, takeChoice, toggleCardCheck, toggleCheck, writeStateToSearch } from "../src/features/workflow/state.ts";
 
 function move(state, choice) { return takeChoice(state, choice); }
 
@@ -47,6 +47,12 @@ test("один параметр s сохраняет маршрут, ответ�
   assert.equal(params.get("answer"), null);
   assert.equal(params.get("utm"), "team");
   assert.deepEqual(readStateFromSearch(params), state);
+});
+
+test("чекбокс на графе сохраняется в ссылке для любой карточки", () => {
+  const checked = toggleCardCheck(initialState, "B05", 2);
+  assert.deepEqual(readStateFromSearch(writeStateToSearch(new URLSearchParams(), checked)).checks.B05, [2]);
+  assert.deepEqual(toggleCardCheck(checked, "B05", 2).checks.B05, []);
 });
 
 test("исходная ссылка с s продолжает открываться", () => {
