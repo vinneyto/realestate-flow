@@ -17,10 +17,10 @@ type CardNode = Node<{ cardId: CardId }, "card">;
 type BoardNode = CardNode | Node<{ label: string; number: number }, "stage">;
 const connections = buildGraphConnections();
 const choiceCount = Object.values(cards).reduce((total, card) => total + (card.choices?.length ?? 0), 0);
-const cardWidth = 350, columnGap = 58;
+const cardWidth = 350, columnGap = 170;
 const columnX = [0, cardWidth + columnGap, (cardWidth + columnGap) * 2];
 const centerX = columnX[1], stageWidth = columnX[2] + cardWidth + 100;
-const stageGap = 105, cardGap = 68;
+const stageGap = 150, cardGap = 155;
 
 type BoardContextValue = { state: WorkflowState; toggle: (id: CardId, index: number) => void; search: string };
 const BoardContext = createContext<BoardContextValue | null>(null);
@@ -34,8 +34,12 @@ function WorkflowNode({ data }: NodeProps<CardNode>) {
   return <article className={`graph-card ${active ? "is-current" : ""} ${visited ? "is-visited" : ""} ${card.id === "C19" ? "is-finish" : ""}`}>
     <Handle id="in" type="target" position={Position.Top} />
     <Handle id="out" type="source" position={Position.Bottom} />
-    <Handle id="return-in" type="target" position={Position.Right} />
-    <Handle id="return-out" type="source" position={Position.Right} />
+    <Handle id="return-in" type="target" position={Position.Right} style={{ top: "30%" }} />
+    <Handle id="return-left-in" type="target" position={Position.Left} style={{ top: "30%" }} />
+    <Handle id="return-out" type="source" position={Position.Right} style={{ top: "70%" }} />
+    <Handle id="return-left-out" type="source" position={Position.Left} style={{ top: "70%" }} />
+    <Handle id="branch-in" type="target" position={Position.Left} style={{ top: "50%" }} />
+    <Handle id="branch-out" type="source" position={Position.Right} style={{ top: "50%" }} />
     <header className="graph-card-heading"><span>{card.eyebrow}</span><b>{card.id}</b></header>
     <h2>{card.title}</h2><p>{card.description}</p>
     {card.checklist.length > 0 && <section className="graph-checks"><h3>Что проверить <span>{checked.size}/{card.checklist.length}</span></h3>
@@ -55,26 +59,49 @@ function StageNode({ data }: NodeProps<Node<{ label: string; number: number }, "
   return <div className="graph-stage"><div className="graph-stage-title"><span>{String(data.number).padStart(2, "0")}</span>{data.label}</div></div>;
 }
 
-function ReturnEdge({ sourceX, sourceY, targetX, targetY, markerEnd, style }: EdgeProps) {
-  const bend = Math.max(sourceX, targetX) + Math.min(190, Math.max(78, Math.abs(sourceY - targetY) * 0.11));
-  return <BaseEdge path={`M ${sourceX} ${sourceY} C ${bend} ${sourceY}, ${bend} ${targetY}, ${targetX} ${targetY}`} markerEnd={markerEnd}
+function ReturnEdge({ source, sourceX, sourceY, targetX, targetY, markerEnd, style }: EdgeProps) {
+  const lane = sourceX + (source === "C10" ? -65 : 65);
+  return <BaseEdge path={`M ${sourceX} ${sourceY} L ${lane} ${sourceY} L ${lane} ${targetY} L ${targetX} ${targetY}`} markerEnd={markerEnd}
     style={{ ...style, strokeDasharray: "6 5" }} />;
 }
 
+function BranchEdge({ source, target, sourceX, sourceY, targetX, targetY, markerEnd, style }: EdgeProps) {
+  const basis = (source.startsWith("B") ? source : target) as (typeof basisIds)[number];
+  const column = basisIds.indexOf(basis) % 3;
+  const lane = columnX[column] + cardWidth + columnGap / 2;
+  const fromY = sourceY + cardGap * 0.38;
+  const toY = targetY - cardGap * 0.38;
+  return <BaseEdge path={`M ${sourceX} ${sourceY} L ${sourceX} ${fromY} L ${lane} ${fromY} L ${lane} ${toY} L ${targetX} ${toY} L ${targetX} ${targetY}`}
+    markerEnd={markerEnd} style={style} />;
+}
+
+function SideEdge({ sourceX, sourceY, targetX, targetY, markerEnd, style }: EdgeProps) {
+  const lane = columnX[2] - columnGap / 2;
+  const fromY = sourceY + cardGap * 0.38;
+  const toY = targetY - cardGap * 0.38;
+  return <BaseEdge path={`M ${sourceX} ${sourceY} L ${sourceX} ${fromY} L ${lane} ${fromY} L ${lane} ${toY} L ${targetX} ${toY} L ${targetX} ${targetY}`}
+    markerEnd={markerEnd} style={style} />;
+}
+
 const nodeTypes = { card: WorkflowNode, stage: StageNode };
-const edgeTypes = { return: ReturnEdge };
+const edgeTypes = { return: ReturnEdge, branch: BranchEdge, side: SideEdge };
 const initialNodes: BoardNode[] = Object.keys(cards).map(id => ({
   id, type: "card", position: { x: 0, y: 0 }, data: { cardId: id as CardId },
-  draggable: false, style: { opacity: 0, width: cardWidth },
+  draggable: false, style: { opacity: 0, width: cardWidth, zIndex: 2 },
 }));
-const edges: Edge[] = connections.map(({ source, target, backward, choices }) => ({
-  id: `${source}-${target}`, source, target,
-  sourceHandle: backward ? "return-out" : "out", targetHandle: backward ? "return-in" : "in",
-  type: backward ? "return" : "smoothstep",
-  markerEnd: { type: MarkerType.ArrowClosed, color: backward ? "#e68450" : "#868581" },
-  style: { stroke: backward ? "#e68450" : "#868581", strokeWidth: 1.65 },
-  label: choices.length > 1 ? `${choices.length} варианта` : undefined, zIndex: 1,
-}));
+const edges: Edge[] = connections.map(({ source, target, backward, choices }) => {
+  const lateral = source === "C03" && target === "C20" || source === "C09" && target === "C10";
+  const leftReturn = source.startsWith("B") && basisIds.indexOf(source as (typeof basisIds)[number]) % 3 === 0;
+  return {
+    id: `${source}-${target}`, source, target,
+    sourceHandle: backward ? source === "C10" ? "return-left-out" : "return-out" : lateral ? "branch-out" : "out",
+    targetHandle: backward ? leftReturn ? "return-left-in" : "return-in" : lateral ? "branch-in" : "in",
+    type: backward ? "return" : source.startsWith("B") || target.startsWith("B") ? "branch" : source === "C10" && target === "C11" ? "side" : "smoothstep",
+    markerEnd: { type: MarkerType.ArrowClosed, color: backward ? "#e68450" : "#868581" },
+    style: { stroke: backward ? "#e68450" : "#868581", strokeWidth: 1.65 },
+    label: choices.length > 1 ? `${choices.length} варианта` : undefined, zIndex: 0,
+  };
+});
 
 function GraphCanvas({ state, toggle, search }: BoardContextValue) {
   const [nodes, setNodes] = useState<BoardNode[]>(initialNodes);
@@ -139,7 +166,7 @@ function GraphCanvas({ state, toggle, search }: BoardContextValue) {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setNodes([...stages, ...nodes.map(node => ({ ...node, position: positions.get(node.id as CardId)!, style: { width: cardWidth } }))]);
+      setNodes([...stages, ...nodes.map(node => ({ ...node, position: positions.get(node.id as CardId)!, style: { width: cardWidth, zIndex: 2 } }))]);
       setLaidOut(true);
     });
     return () => { cancelled = true; };
@@ -162,6 +189,7 @@ function GraphCanvas({ state, toggle, search }: BoardContextValue) {
     <div className="graph-workspace">
       <ReactFlow<BoardNode, Edge> nodes={nodes} edges={laidOut ? edges : []} onNodesChange={onNodesChange} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
         nodesDraggable={false} nodesConnectable={false} panOnDrag zoomOnPinch zoomOnScroll
+        zIndexMode="manual" elevateNodesOnSelect={false} elevateEdgesOnSelect={false}
         minZoom={0.025} maxZoom={1.5} fitViewOptions={{ padding: 0.08, minZoom: 0.025 }}>
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
         <Controls showInteractive={false} aria-label="Управление масштабом схемы" />
