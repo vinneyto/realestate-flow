@@ -249,7 +249,7 @@ export default function ProcessMap() {
     </header>
     <div className={`map-board ${expanded ? "is-expanded" : ""}`} ref={board}>
       <div className="map-board-top">
-        <div><strong>Граф сделки</strong><span>Перемещайте холст мышью или пальцем · прокручивайте для масштаба</span></div>
+        <div><strong>Диаграмма сделки</strong><span>Перемещайте холст мышью или пальцем · прокручивайте для масштаба</span></div>
         <Button variant="outline" onClick={toggleFullscreen} aria-label={expanded ? "Закрыть полноэкранную схему" : "Открыть схему на весь экран"}>
           {expanded ? <Shrink size={18} /> : <Expand size={18} />}<span>{expanded ? "Свернуть" : "На весь экран"}</span>
         </Button>
