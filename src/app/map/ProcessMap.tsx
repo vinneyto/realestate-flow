@@ -34,6 +34,7 @@ function WorkflowNode({ data }: NodeProps<CardNode>) {
   return <article className={`graph-card ${active ? "is-current" : ""} ${visited ? "is-visited" : ""} ${card.id === "C19" ? "is-finish" : ""}`}>
     <Handle id="in" type="target" position={Position.Top} />
     <Handle id="out" type="source" position={Position.Bottom} />
+    <Handle id="basis-out" type="source" position={Position.Right} style={{ top: "70%" }} />
     <Handle id="branch-in" type="target" position={Position.Left} style={{ top: "50%" }} />
     <Handle id="branch-out" type="source" position={Position.Right} style={{ top: "50%" }} />
     <header className="graph-card-heading"><span>{card.eyebrow}</span><b>{card.id}</b></header>
@@ -61,7 +62,10 @@ function BranchEdge({ source, target, sourceX, sourceY, targetX, targetY, marker
   const lane = columnX[column] + cardWidth + columnGap / 2;
   const fromY = sourceY + cardGap * 0.38;
   const toY = targetY - cardGap * 0.38;
-  return <BaseEdge path={`M ${sourceX} ${sourceY} L ${sourceX} ${fromY} L ${lane} ${fromY} L ${lane} ${toY} L ${targetX} ${toY} L ${targetX} ${targetY}`}
+  const path = source.startsWith("B")
+    ? `M ${sourceX} ${sourceY} L ${lane} ${sourceY} L ${lane} ${toY} L ${targetX} ${toY} L ${targetX} ${targetY}`
+    : `M ${sourceX} ${sourceY} L ${sourceX} ${fromY} L ${lane} ${fromY} L ${lane} ${toY} L ${targetX} ${toY} L ${targetX} ${targetY}`;
+  return <BaseEdge path={path}
     markerEnd={markerEnd} style={style} />;
 }
 
@@ -83,7 +87,7 @@ const edges: Edge[] = connections.filter(connection => !connection.backward).map
   const lateral = source === "C03" && target === "C20" || source === "C09" && target === "C10";
   return {
     id: `${source}-${target}`, source, target,
-    sourceHandle: lateral ? "branch-out" : "out",
+    sourceHandle: source.startsWith("B") ? "basis-out" : lateral ? "branch-out" : "out",
     targetHandle: lateral ? "branch-in" : "in",
     type: source.startsWith("B") || target.startsWith("B") ? "branch" : source === "C10" && target === "C11" ? "side" : "smoothstep",
     markerEnd: { type: MarkerType.ArrowClosed, color: "#868581" },
