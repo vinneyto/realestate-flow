@@ -34,10 +34,6 @@ function WorkflowNode({ data }: NodeProps<CardNode>) {
   return <article className={`graph-card ${active ? "is-current" : ""} ${visited ? "is-visited" : ""} ${card.id === "C19" ? "is-finish" : ""}`}>
     <Handle id="in" type="target" position={Position.Top} />
     <Handle id="out" type="source" position={Position.Bottom} />
-    <Handle id="return-in" type="target" position={Position.Right} style={{ top: "30%" }} />
-    <Handle id="return-left-in" type="target" position={Position.Left} style={{ top: "30%" }} />
-    <Handle id="return-out" type="source" position={Position.Right} style={{ top: "70%" }} />
-    <Handle id="return-left-out" type="source" position={Position.Left} style={{ top: "70%" }} />
     <Handle id="branch-in" type="target" position={Position.Left} style={{ top: "50%" }} />
     <Handle id="branch-out" type="source" position={Position.Right} style={{ top: "50%" }} />
     <header className="graph-card-heading"><span>{card.eyebrow}</span><b>{card.id}</b></header>
@@ -59,12 +55,6 @@ function StageNode({ data }: NodeProps<Node<{ label: string; number: number }, "
   return <div className="graph-stage"><div className="graph-stage-title"><span>{String(data.number).padStart(2, "0")}</span>{data.label}</div></div>;
 }
 
-function ReturnEdge({ source, sourceX, sourceY, targetX, targetY, markerEnd, style }: EdgeProps) {
-  const lane = sourceX + (source === "C10" ? -65 : 65);
-  return <BaseEdge path={`M ${sourceX} ${sourceY} L ${lane} ${sourceY} L ${lane} ${targetY} L ${targetX} ${targetY}`} markerEnd={markerEnd}
-    style={{ ...style, strokeDasharray: "6 5" }} />;
-}
-
 function BranchEdge({ source, target, sourceX, sourceY, targetX, targetY, markerEnd, style }: EdgeProps) {
   const basis = (source.startsWith("B") ? source : target) as (typeof basisIds)[number];
   const column = basisIds.indexOf(basis) % 3;
@@ -84,21 +74,20 @@ function SideEdge({ sourceX, sourceY, targetX, targetY, markerEnd, style }: Edge
 }
 
 const nodeTypes = { card: WorkflowNode, stage: StageNode };
-const edgeTypes = { return: ReturnEdge, branch: BranchEdge, side: SideEdge };
+const edgeTypes = { branch: BranchEdge, side: SideEdge };
 const initialNodes: BoardNode[] = Object.keys(cards).map(id => ({
   id, type: "card", position: { x: 0, y: 0 }, data: { cardId: id as CardId },
   draggable: false, style: { opacity: 0, width: cardWidth, zIndex: 2 },
 }));
-const edges: Edge[] = connections.map(({ source, target, backward, choices }) => {
+const edges: Edge[] = connections.filter(connection => !connection.backward).map(({ source, target, choices }) => {
   const lateral = source === "C03" && target === "C20" || source === "C09" && target === "C10";
-  const leftReturn = source.startsWith("B") && basisIds.indexOf(source as (typeof basisIds)[number]) % 3 === 0;
   return {
     id: `${source}-${target}`, source, target,
-    sourceHandle: backward ? source === "C10" ? "return-left-out" : "return-out" : lateral ? "branch-out" : "out",
-    targetHandle: backward ? leftReturn ? "return-left-in" : "return-in" : lateral ? "branch-in" : "in",
-    type: backward ? "return" : source.startsWith("B") || target.startsWith("B") ? "branch" : source === "C10" && target === "C11" ? "side" : "smoothstep",
-    markerEnd: { type: MarkerType.ArrowClosed, color: backward ? "#e68450" : "#868581" },
-    style: { stroke: backward ? "#e68450" : "#868581", strokeWidth: 1.65 },
+    sourceHandle: lateral ? "branch-out" : "out",
+    targetHandle: lateral ? "branch-in" : "in",
+    type: source.startsWith("B") || target.startsWith("B") ? "branch" : source === "C10" && target === "C11" ? "side" : "smoothstep",
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#868581" },
+    style: { stroke: "#868581", strokeWidth: 1.65 },
     label: choices.length > 1 ? `${choices.length} варианта` : undefined, zIndex: 0,
   };
 });

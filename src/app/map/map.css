@@ -42,7 +42,7 @@
 .graph-stage-title span { color:var(--orange); font-size:12px; letter-spacing:.08em; }
 .react-flow__node-stage { pointer-events:none!important; }
 .react-flow__node-card { width:350px; }
-.react-flow__handle { width:7px; height:7px; border:1px solid var(--card); background:var(--orange); }
+.react-flow__handle { width:1px; height:1px; border:0; background:transparent; opacity:0; }
 .react-flow__controls,.react-flow__minimap { overflow:hidden; border:1px solid var(--border); border-radius:9px; background:var(--card); box-shadow:0 4px 18px #0001; }
 .react-flow__controls-button { background:var(--card); border-color:var(--border); fill:var(--foreground); }
 .react-flow__controls-button:hover { background:var(--accent); }
