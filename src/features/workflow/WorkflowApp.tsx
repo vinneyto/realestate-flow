@@ -61,7 +61,7 @@ export default function WorkflowApp() {
       <div className="brand"><div className="brand-mark">m<span>→</span></div><div><strong>Маршрут сделки</strong><small>Интерактивный помощник риелтора</small></div></div>
       <div className="toolbar">
         <Button variant="ghost" className="icon-button" onClick={switchTheme} aria-label={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}>{theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}</Button>
-        <Link className="map-link" href={`/map${ready ? window.location.search : ""}`} aria-label="Схема процесса"><Network size={16} /> Схема</Link>
+        <Link className="map-link" href={`/map${ready ? window.location.search : ""}`} aria-label="Диаграмма сделки"><Network size={16} /> Диаграмма</Link>
         <Button variant="outline" onClick={share} className="share-button"><Copy size={16} />{copied ? "Ссылка скопирована" : "Поделиться"}</Button>
       </div>
     </header>
